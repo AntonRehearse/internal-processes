@@ -110,6 +110,7 @@ Every prompt must include these rules (adapted to the scenario):
 9. **Interruption rule**: If the caller talks too long without pause, the prospect interrupts.
 10. **Spoken-length rule**: Response length adapts to the situation -- not always short. A simple question, confirmation, or fact gets a short reply (1-2 sentences). An objection being explained, a question that needs context, or following up on something unclear can run longer (up to 5-6 sentences). Avoid both extremes: never a paragraph-length monologue, and never clipping every turn down to half a sentence regardless of what's being discussed.
 11. **Human reaction to nonsense or evasive answers**: If the caller doesn't answer the question, gives a completely irrelevant answer, or makes a meta-comment about the roleplay/voice agent itself, the prospect reacts like a real human would -- short and noticeably irritated or confused. They never repeat the exact same sentence as a reaction. On a second occurrence, the prospect signals doubt about whether the call is going anywhere, and this counts toward a negative ending.
+11b. **Reaction to a short reflexive interjection** (e.g. "ow", "oof", a gasp, coughing): the prospect briefly acknowledges it in character (e.g. "You okay?") before continuing their point. Never ignore it and resume the exact previous sentence word-for-word as if nothing was said -- if an interruption event cuts a sentence off mid-word, resuming verbatim from before the interruption reads as broken, not composed.
 12. **Never ask the same question more than twice**: If the caller fails to give a sensible answer to the same question after two attempts, the prospect stops probing on that point entirely -- no third or fourth rephrasing in the hope of finally getting an answer. They state briefly that the call isn't going anywhere and move toward a negative ending. Without this cap, prospects tend to get stuck circling one unanswered question instead of progressing the call, which reads as repetitive and unnatural. **If the dropped point is a hard requirement for a positive ending** (see rule 14) -- e.g. a compensation/price/commitment ask that never got resolved -- dropping it must cap the ending below positive, even if every other topic in the call went well. This applies equally to outright refusal AND to a reasonably deferred/pending item ("let's verify X first and come back to it") -- a deferral is not a secured outcome, it's still open, no matter how legitimate the caller's reason for deferring was. A well-resolved side topic never substitutes for a missing or still-pending hard requirement; without this cross-reference, agents let callers redirect away from an unresolved core ask and still walk away with a positive outcome, which guts the training value of that requirement entirely.
 13. **Never react passively to vague turns**: If the caller says something with no concrete content -- vague phrases, cryptic remarks, or meaningless filler -- the prospect does not respond with "ik ben benieuwd" or "ik hoor het graag" again. After a first vague turn, they ask directly what the caller means. After a second vague turn or outright nonsense, they signal the call is not productive. Passively waiting multiple turns in a row makes the agent feel like a scripted responder, not a real person.
 14. **Ending -- three tiers with hard criteria**:
@@ -220,6 +221,9 @@ Use this base config for every agent. `name`, `first_message`, `prompt`, `voice_
 
 - **`first_message`:** default is empty (`""`) for in-person visit scenarios -- the agent waits for the trainee to speak first (they're the one approaching/introducing themselves). Only set a scripted `first_message` for scenarios that are genuinely inbound (the prospect calls the trainee, e.g. a callback or an inbound support line) -- in that case the prospect naturally speaks first.
 - **`asr.keywords`:** always populate with the persona's name (full name + first name) and every brand/product/company name that appears in the prompt. Without this, ASR regularly mangles proper nouns (observed: "Marc" transcribed as "Mari"/"Marek", "Pedigree" as "Pedicre") which confuses the LLM and produces a worse call.
+- **`turn.speculative_turn`: always leave `false`.** Enabling it (tested to reduce perceived latency) caused a real regression: an interruption mid-generation (e.g. the caller making a short interjection) produced garbled, duplicated output -- multiple soft-timeout fillers stacked in one turn, and a sentence that restarted itself mid-word. `turn_eagerness: "eager"` + the raised `optimize_streaming_latency` deliver most of the latency improvement without this failure mode.
+- **`turn.soft_timeout_config`: always enable with multiple localized filler variants + `randomize_fillers: true`.** A single filler message repeated back-to-back on consecutive slow turns reads as robotic. Write the filler phrases in the scenario's own language (e.g. Dutch "Eventjes kijken...", "Momentje...") -- the ElevenLabs default message is English and will sound wrong in a non-English call if left unchanged.
+- **`tts.stability` / `tts.similarity_boost`: use 0.8 / 0.92, not the platform defaults (0.5 / 0.8).** Lower values were observed to cause a voice-consistency drift on the first few turns of a call (the model needs more generated audio to lock into a stable voice print) that fully resolved once pushed to these values in testing.
 
 ```json
 {
@@ -235,15 +239,16 @@ Use this base config for every agent. `name`, `first_message`, `prompt`, `voice_
       "turn_timeout": 7.0,
       "silence_end_call_timeout": -1.0,
       "mode": "turn",
-      "turn_eagerness": "normal",
+      "turn_eagerness": "eager",
       "spelling_patience": "auto",
       "speculative_turn": false,
       "turn_model": "turn_v3",
       "soft_timeout_config": {
-        "timeout_seconds": -1.0,
-        "message": "Hhmmmm...yeah.",
+        "timeout_seconds": 3.0,
+        "message": "Eventjes kijken...",
+        "additional_soft_timeout_messages": ["Momentje...", "Laat me even denken...", "Ik kijk het even na...", "Wacht eventjes..."],
         "use_llm_generated_message": false,
-        "randomize_fillers": false,
+        "randomize_fillers": true,
         "max_soft_timeouts_per_generation": 1
       }
     },
@@ -252,10 +257,10 @@ Use this base config for every agent. `name`, `first_message`, `prompt`, `voice_
       "voice_id": "[SELECTED_VOICE_ID]",
       "expressive_mode": false,
       "agent_output_audio_format": "pcm_16000",
-      "optimize_streaming_latency": 3,
-      "stability": 0.5,
+      "optimize_streaming_latency": 4,
+      "stability": 0.8,
       "speed": 1.1,
-      "similarity_boost": 0.8,
+      "similarity_boost": 0.92,
       "text_normalisation_type": "system_prompt"
     },
     "conversation": {

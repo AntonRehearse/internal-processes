@@ -4,6 +4,30 @@ Log of learnings from testing AI voice agents, folded back into the skill so fut
 
 ---
 
+## 2026-07-08 -- Infra tuning: voice consistency, latency, and a speculative_turn regression
+
+**Finding, round 1:** Two infra complaints, unrelated to prompt content: (1) the TTS voice sounded slightly different for the first 1-2 turns of a call before settling, and (2) the agent went visibly silent for a few seconds on longer turns later in the call, with no signal it was still "there."
+
+**Fix, round 1:** Raised `tts.stability` (0.5 -> 0.7) and `tts.similarity_boost` (0.8 -> 0.9) for voice consistency. Enabled `turn.soft_timeout_config` (was disabled, `timeout_seconds: -1`) with a Dutch filler ("Eventjes kijken...") instead of the English default ("Hhmmmm...yeah.") to mask generation delay.
+
+**Finding, round 2 (after retesting):** Voice still drifted on the 3rd utterance specifically -- the round-1 stability bump wasn't enough. Latency was better but still occurred mid/late-call. The single filler message repeated back-to-back when two slow turns landed close together, which read as robotic.
+
+**Fix, round 2:** Pushed `stability` to 0.8 and `similarity_boost` to 0.92. Set `turn_eagerness: "eager"` and enabled `speculative_turn: true` to attack latency further. Added 4 additional Dutch filler variants + `randomize_fillers: true` so the same phrase never repeats back-to-back.
+
+**Finding, round 3 (after retesting again):** Voice consistency and latency both improved significantly -- confirmed fixed. But `speculative_turn: true` introduced a real regression: when the caller made a short interjection ("Au") mid-generation, the agent's response came out garbled -- 5 soft-timeout fillers stacked in one turn, and a sentence that restarted itself mid-word ("een beetje op**Dat zou fantastisch zijn, Anton!** Als je de schappen..."). Separately, the agent fully ignored the "Au" itself and resumed its exact previous sentence as if nothing had been said.
+
+**Root cause:** `speculative_turn` makes the agent start generating a response before the caller's turn is confirmed finished. An interruption event arriving mid-speculative-generation appears to trigger a regeneration that doesn't cleanly discard the prior attempt, producing concatenated/duplicated output including multiple soft-timeout fillers (the max-1-per-generation cap doesn't hold across these regenerations). Separately, no rule existed for handling a caller's short reflexive interjection (a real human would acknowledge "you okay?" before continuing, not blindly resume a cut-off sentence).
+
+**Fix, round 3 (final):**
+- Reverted `speculative_turn` to `false` -- the latency win holds without it (comes from `turn_eagerness: eager` + `optimize_streaming_latency: 4`), and reverting removes the glitch.
+- Added a new behavioral rule (skill rule 11b) for reacting to short reflexive interjections: acknowledge briefly in character, never resume the exact previous sentence verbatim.
+- Updated the skill's Phase 4 base config template to the tuned defaults (`stability: 0.8`, `similarity_boost: 0.92`, `optimize_streaming_latency: 4`, `turn_eagerness: eager`, `speculative_turn: false`, localized multi-message soft timeout with randomization) so every future agent starts from these values instead of the platform defaults.
+- Applied to all three Marc Deceuninck tiers' live agents.
+
+**How to apply:** Don't enable `speculative_turn` even to chase latency -- the interruption-handling regression it causes is worse than the delay it saves, and `turn_eagerness: eager` + streaming-latency tuning covers most of the same ground safely. When auditing any agent transcript, also check for reflexive-interjection handling (rule 11b) alongside the existing nonsense/evasive-answer check (rule 11).
+
+---
+
 ## 2026-07-08 -- Hallucinated "wrong format" objection + deferral treated as resolved
 
 **Finding:** Third test pass on Marc Deceuninck (Beginner). Two new issues, both surfaced in the same transcript:
