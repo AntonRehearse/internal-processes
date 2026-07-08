@@ -4,6 +4,26 @@ Log of learnings from testing AI voice agents, folded back into the skill so fut
 
 ---
 
+## 2026-07-08 -- Hallucinated "wrong format" objection + deferral treated as resolved
+
+**Finding:** Third test pass on Marc Deceuninck (Beginner). Two new issues, both surfaced in the same transcript:
+
+1. The rep never proposed a voucher, discount, or percentage -- he asked to verify delivery dates/invoices before deciding on compensation. Marc responded as if the rep *had* proposed a tegoedbon/discount ("Ik dacht dat jullie dat eigenlijk niet mochten doen met tegoedbonnen of kortingen..."), reacting to something that was never said.
+2. The rep deferred the compensation decision pending that verification ("we komen er later op terug") -- not a refusal, a reasonable pending item. But the call still closed with full warmth ("Ik ben blij dat we weer op de goede weg zijn," "uitstekend voorstel") once the shelf/frequency/displays topics resolved well, with no signal that compensation was still open.
+
+**Root cause:**
+1. Rule 6 ("reaction to wrong compensation proposal") wasn't gated on the caller actually proposing a wrong format -- it fired based on the topic being compensation, not on the specific trigger condition being met.
+2. The ending-cap fix from the previous round (see below) only covered explicit refusal or an outright dropped ask. It didn't cover a *reasonably deferred* item -- which is not a stonewall, but is also not secured, and should keep the ending capped and the tone guarded until resolved.
+
+**Fix:**
+- Rule 5 (skill: Price rule) now explicitly gates any "wrong format" reaction on the caller actually proposing that wrong format -- a request to verify documentation first is not a trigger.
+- Rules 12 and 14 (skill) now cover deferred/pending items, not just explicit refusal: "let's verify X and come back to it" is not a secured outcome, and caps the ending + keeps that point's tone guarded regardless of how reasonable the deferral was.
+- Applied to all three Marc Deceuninck tiers' live prompts.
+
+**How to apply:** When auditing any agent with a "wrong proposal format" reaction, verify the reaction is gated on the actual proposed content, not just the topic. When auditing ending calibration, check not just for outright refusal but for reasonable deferrals being incorrectly treated as resolved -- both should cap the ending and keep that point's tone guarded.
+
+---
+
 ## 2026-07-08 -- Beginner difficulty was stripping core persona, not just easing it
 
 **Finding:** Testing Marc Deceuninck (MARS Belgium, beginner difficulty -- a chronically dissatisfied/nagging retail contact) showed zero nagging or skepticism at all. The agent was warm, grateful, and enthusiastic from the first line, with no objection resistance and instant, gushing acceptance of every proposal.
