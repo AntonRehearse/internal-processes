@@ -18,6 +18,22 @@ Log of learnings from testing AI voice agents, folded back into the skill so fut
 
 ---
 
+## 2026-07-08 -- Redirecting away from a refused hard requirement still produced a positive ending
+
+**Finding:** Re-testing Marc Deceuninck (Beginner) after the persona fix above: the rep flatly refused to offer any compensation for the expired stock, twice. Marc correctly pushed back once, got refused again, then dropped it and pivoted to the shelf/frequency/displays topics -- which all resolved well. The call still ended fully positive (follow-up scheduled, warm close), even though the compensation ask -- an explicit hard requirement for a positive ending per rule 14 -- was never met.
+
+**Root cause:** Rule 12 ("never ask the same question more than twice, then let it rest and move on") and rule 14 ("ending tiers with hard criteria") weren't cross-referenced. The model correctly followed rule 12 in isolation (stop probing, move to the next topic) but nothing told it that dropping a *hard-requirement* topic should cap the ending -- so a well-resolved side topic (shelf, frequency) was allowed to substitute for a missing hard requirement (compensation). Checked Medium and Hard tiers too: Hard already tied a dropped point to a negative ending; Medium partially did (generic neutral/negative steer, not compensation-specific); Beginner had no tie-in at all. The gap was real but uneven across tiers -- not caught earlier because only Beginner had been transcript-tested up to that point.
+
+**Fix:** 
+- Rule 12 (skill: "Never ask the same question more than twice") now states that if the dropped point is a hard requirement for a positive ending, dropping it caps the ending below positive regardless of how well other topics went.
+- Rule 14 (skill: ending tiers) now requires hard-requirement conditions to be *actually achieved*, not merely attempted-then-refused, for a positive ending.
+- Audit checklist item 7 now explicitly calls out this failure mode: a caller redirecting away from a refused hard requirement toward topics that go well must not still produce a positive ending.
+- Applied directly to all three Marc Deceuninck tiers' live prompts (compensation is the hard requirement in this scenario), not just Beginner.
+
+**How to apply:** Whenever an agent has any hard-requirement objection (price, compensation, a specific commitment) alongside other resolvable topics, check during audit whether a refused/dropped hard requirement can be "outrun" by resolving everything else. If the transcript shows a positive ending despite an unresolved hard requirement, that's this exact bug -- fix at the skill level (rules 12 + 14), then propagate to every agent that has a hard-requirement objection, not just the one that surfaced it.
+
+---
+
 ## Process note
 
 Iteration loop for any agent, going forward:
