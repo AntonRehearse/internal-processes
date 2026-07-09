@@ -4,6 +4,22 @@ Log of learnings from testing AI voice agents, folded back into the skill so fut
 
 ---
 
+## 2026-07-08 -- Final validated TTS/turn config (supersedes the round-2/round-3 entries above)
+
+**This entry corrects the Phase 4 base config guidance.** The earlier infra-tuning entries in this log document real intermediate states, but the round-2 "eager + multi-filler" config was never actually safe -- it's what caused the call-breaking regression (`max_soft_timeouts_per_generation` silently auto-scaling to 5). After a full revert and isolated re-testing, here is what's actually confirmed, tested across multiple transcripts:
+
+**Confirmed fix (keep):**
+- `tts.stability: 0.8`, `tts.similarity_boost: 0.92` -- this alone resolves the early-call voice-consistency drift. Tested clean at these values, tested still-drifting at platform defaults (0.5/0.8), tested still-drifting even on a full model swap to `eleven_multilingual_v2` (which also made latency worse -- don't use that model). This is the only infra change from today that survived every retest.
+
+**Confirmed NOT to use (revert/avoid):**
+- `turn_eagerness: "eager"` and `speculative_turn: true` -- both were tried to cut latency. `speculative_turn` caused garbled/duplicated output on interruption. `turn_eagerness: eager` was part of the batch that led to the soft-timeout regression below. Neither isolated latency benefit was ever confirmed to outweigh the risk once retested independently.
+- **Multiple soft-timeout filler messages** (`additional_soft_timeout_messages` with several variants + `randomize_fillers: true`) -- `max_soft_timeouts_per_generation` is not independently settable via the API; it silently auto-scales to match the total number of configured filler messages. 5 total messages produced a cap of 5, and the agent got stuck stacking fillers instead of processing input -- calls became completely unusable in both the client app and ElevenLabs's own preview. Leave soft timeout disabled (`timeout_seconds: -1.0`) unless this is retested with exactly 1-2 total messages to confirm the auto-cap stays safe.
+- `optimize_streaming_latency` raised from the default (3) -- this was bundled into the same batch as the above and never isolated as a necessary factor. Leave at platform default.
+
+**How to apply:** Use `stability: 0.8` / `similarity_boost: 0.92` as the new default for every future agent (already updated in the skill's Phase 4 base config). Do not enable `turn_eagerness: eager`, `speculative_turn`, multi-message soft timeout, or raised `optimize_streaming_latency` without isolated, single-variable retesting -- bundling several infra changes at once (as happened today) makes it very hard to tell which change caused a regression when one appears.
+
+---
+
 ## 2026-07-08 -- Infra tuning: voice consistency, latency, and a speculative_turn regression
 
 **Finding, round 1:** Two infra complaints, unrelated to prompt content: (1) the TTS voice sounded slightly different for the first 1-2 turns of a call before settling, and (2) the agent went visibly silent for a few seconds on longer turns later in the call, with no signal it was still "there."

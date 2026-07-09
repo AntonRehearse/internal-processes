@@ -221,9 +221,9 @@ Use this base config for every agent. `name`, `first_message`, `prompt`, `voice_
 
 - **`first_message`:** default is empty (`""`) for in-person visit scenarios -- the agent waits for the trainee to speak first (they're the one approaching/introducing themselves). Only set a scripted `first_message` for scenarios that are genuinely inbound (the prospect calls the trainee, e.g. a callback or an inbound support line) -- in that case the prospect naturally speaks first.
 - **`asr.keywords`:** always populate with the persona's name (full name + first name) and every brand/product/company name that appears in the prompt. Without this, ASR regularly mangles proper nouns (observed: "Marc" transcribed as "Mari"/"Marek", "Pedigree" as "Pedicre") which confuses the LLM and produces a worse call.
-- **`turn.speculative_turn`: always leave `false`.** Enabling it (tested to reduce perceived latency) caused a real regression: an interruption mid-generation (e.g. the caller making a short interjection) produced garbled, duplicated output -- multiple soft-timeout fillers stacked in one turn, and a sentence that restarted itself mid-word. `turn_eagerness: "eager"` + the raised `optimize_streaming_latency` deliver most of the latency improvement without this failure mode.
-- **`turn.soft_timeout_config`: always enable with multiple localized filler variants + `randomize_fillers: true`.** A single filler message repeated back-to-back on consecutive slow turns reads as robotic. Write the filler phrases in the scenario's own language (e.g. Dutch "Eventjes kijken...", "Momentje...") -- the ElevenLabs default message is English and will sound wrong in a non-English call if left unchanged.
-- **`tts.stability` / `tts.similarity_boost`: use 0.8 / 0.92, not the platform defaults (0.5 / 0.8).** Lower values were observed to cause a voice-consistency drift on the first few turns of a call (the model needs more generated audio to lock into a stable voice print) that fully resolved once pushed to these values in testing.
+- **`turn.turn_eagerness`: leave `"normal"`. `turn.speculative_turn`: always leave `false`.** Both were tested as latency fixes and reverted. `speculative_turn: true` caused a real regression: an interruption mid-generation (e.g. a short interjection) produced garbled, duplicated output. `turn_eagerness: "eager"` combined with soft-timeout fillers contributed to a call-breaking regression (see next bullet). Neither is worth the risk for the latency gain they offered.
+- **`turn.soft_timeout_config`: leave disabled (`timeout_seconds: -1.0`), single default `message`, no `additional_soft_timeout_messages`.** This was tested extensively as a latency-masking device (localized filler phrases, multiple variants, `randomize_fillers: true`) and caused a serious, non-obvious bug: `max_soft_timeouts_per_generation` is **not independently settable** -- it silently auto-scales to match the number of configured filler messages (1 main + N additional = cap of N+1), regardless of what value is sent via the API. With 5 total messages configured, the cap became 5, and the agent got stuck stacking fillers instead of ever processing real input -- calls became completely unusable, in both the client app and ElevenLabs's own preview. If you need filler variety in the future, this must be tested with exactly 1-2 total messages first to confirm the auto-cap stays low enough to be safe -- do not add several variants at once.
+- **`tts.stability` / `tts.similarity_boost`: use 0.8 / 0.92, not the platform defaults (0.5 / 0.8).** Lower values caused a voice-consistency drift on the first few turns of a call (the model needs more generated audio to lock into a stable voice print). This is the one infra change from testing that held up under repeated retesting -- confirmed fixed at 0.8/0.92, confirmed still drifting at 0.5/0.8, and confirmed drifting again even on `eleven_multilingual_v2` (a full model swap made both latency and voice consistency worse -- do not use that model for this reason). Leave `optimize_streaming_latency` at the platform default (3) -- raising it was tried as part of the same batch of changes that caused the call-breaking regression above and wasn't isolated as a necessary factor.
 
 ```json
 {
@@ -239,16 +239,16 @@ Use this base config for every agent. `name`, `first_message`, `prompt`, `voice_
       "turn_timeout": 7.0,
       "silence_end_call_timeout": -1.0,
       "mode": "turn",
-      "turn_eagerness": "eager",
+      "turn_eagerness": "normal",
       "spelling_patience": "auto",
       "speculative_turn": false,
       "turn_model": "turn_v3",
       "soft_timeout_config": {
-        "timeout_seconds": 3.0,
-        "message": "Eventjes kijken...",
-        "additional_soft_timeout_messages": ["Momentje...", "Laat me even denken...", "Ik kijk het even na...", "Wacht eventjes..."],
+        "timeout_seconds": -1.0,
+        "message": "Hhmmmm...yeah.",
+        "additional_soft_timeout_messages": [],
         "use_llm_generated_message": false,
-        "randomize_fillers": true,
+        "randomize_fillers": false,
         "max_soft_timeouts_per_generation": 1
       }
     },
@@ -257,7 +257,7 @@ Use this base config for every agent. `name`, `first_message`, `prompt`, `voice_
       "voice_id": "[SELECTED_VOICE_ID]",
       "expressive_mode": false,
       "agent_output_audio_format": "pcm_16000",
-      "optimize_streaming_latency": 4,
+      "optimize_streaming_latency": 3,
       "stability": 0.8,
       "speed": 1.1,
       "similarity_boost": 0.92,
