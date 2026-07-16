@@ -4,6 +4,18 @@ Log of learnings from testing AI voice agents, folded back into the skill so fut
 
 ---
 
+## 2026-07-08 -- Fixed naming convention so the persona name can always be extracted
+
+**Problem:** The Rehearse app displays the ElevenLabs agent's raw `name` field verbatim as the scenario title, which is why RH-006 ("scenario display name too long") happened in the first place -- names like `MARS Belgium - De altijd-zagende-verantwoordelijke - Marc Deceuninck (Beginner)` showed in full instead of just "Marc Deceuninck". 11 of the 14 live agents also had no company/description prefix at all (just the bare persona name, e.g. "Bart", "Kevin"), so there was no consistent structure to parse in the first place.
+
+**Fix:** Adopted a fixed convention: `[COMPANY] - [SHORT DESCR] - [DIFFICULTY] - NAME` (with a difficulty tier) or `[COMPANY] - [SHORT DESCR] - NAME` (without one). The one invariant: **the persona name is always the last segment after the final `" - "`**, so extraction is `name.split(" - ")[-1].strip()` regardless of how many segments precede it -- no need to force an empty difficulty segment into scenarios that don't have one.
+
+Renamed all 14 live agents to this convention (metadata-only change via `PATCH /v1/convai/agents/{id}` on the `name` field -- no prompt, TTS, or turn config touched). Added to the skill's Phase 4 naming guidance so every future agent follows it from creation.
+
+**How to apply:** Any new agent gets this name format from the start. If the Rehearse app's display-name logic gets fixed to use the actual persona field instead of the raw ElevenLabs name (the deeper fix behind RH-006), this convention becomes a safety net rather than a requirement -- but it costs nothing to keep either way.
+
+---
+
 ## 2026-07-08 -- Final validated TTS/turn config (supersedes the round-2/round-3 entries above)
 
 **This entry corrects the Phase 4 base config guidance.** The earlier infra-tuning entries in this log document real intermediate states, but the round-2 "eager + multi-filler" config was never actually safe -- it's what caused the call-breaking regression (`max_soft_timeouts_per_generation` silently auto-scaling to 5). After a full revert and isolated re-testing, here is what's actually confirmed, tested across multiple transcripts:
